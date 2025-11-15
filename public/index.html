@@ -1,0 +1,143 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Pessoas</title>
+  <style>
+    body { font-family: system-ui, sans-serif; padding: 20px; }
+    form { margin-top: 16px; }
+    input { margin: 4px 0; display:block; }
+  </style>
+</head>
+<body>
+  <h1>Lista de Pessoas</h1>
+  <ul id="list"></ul>
+
+  <h2>Adicionar Pessoa</h2>
+  <form id="form">
+    <input name="name" placeholder="Nome" required>
+    <input name="email" placeholder="Email" type="email" required>
+    <input name="age" placeholder="Idade" type="number">
+    <button type="submit">Enviar</button>
+  </form>
+
+  <script>
+    let editingId = null;
+
+    function el(tag, props = {}, ...children) {
+      const node = document.createElement(tag);
+      Object.entries(props).forEach(([k, v]) => {
+        if (k === 'class') node.className = v;
+        else if (k === 'onclick') node.addEventListener('click', v);
+        else node.setAttribute(k, v);
+      });
+      children.flat().forEach(c => {
+        if (typeof c === 'string') node.appendChild(document.createTextNode(c));
+        else if (c) node.appendChild(c);
+      });
+      return node;
+    }
+
+    async function load() {
+      const res = await fetch('/api/persons');
+      const data = await res.json();
+      renderList(data);
+    }
+
+    function renderList(data) {
+      const ul = document.getElementById('list');
+      ul.innerHTML = '';
+      data.forEach(p => {
+        const li = document.createElement('li');
+        li.textContent = `${p.name} (${p.email}) ${p.age ?? ''}`;
+
+        const btnEdit = el('button', { type: 'button', onclick: () => startEdit(p) }, 'Editar');
+        const btnDel = el('button', { type: 'button', onclick: () => removePerson(p._id) }, 'Remover');
+
+        li.appendChild(document.createTextNode(' '));
+        li.appendChild(btnEdit);
+        li.appendChild(document.createTextNode(' '));
+        li.appendChild(btnDel);
+
+        ul.appendChild(li);
+      });
+    }
+
+    function fillForm(person) {
+      const form = document.getElementById('form');
+      form.name.value = person.name || '';
+      form.email.value = person.email || '';
+      form.age.value = person.age ?? '';
+    }
+
+    function clearForm() {
+      const form = document.getElementById('form');
+      form.reset();
+      editingId = null;
+      document.getElementById('submitBtn').textContent = 'Enviar';
+    }
+
+    function startEdit(person) {
+      editingId = person._id;
+      fillForm(person);
+      document.getElementById('submitBtn').textContent = 'Atualizar';
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    async function removePerson(id) {
+      if (!confirm('Confirmar remoção?')) return;
+      const res = await fetch(`/api/persons/${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        await load();
+      } else {
+        const err = await res.json().catch(()=>({ error: 'erro' }));
+        alert('Erro: ' + (err.error || JSON.stringify(err)));
+      }
+    }
+
+    document.getElementById('form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      const body = Object.fromEntries(fd);
+      if (body.age === '') delete body.age;
+      else body.age = Number(body.age);
+
+      try {
+        let res;
+        if (editingId) {
+          res = await fetch(`/api/persons/${editingId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+          });
+        } else {
+          res = await fetch('/api/persons', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+          });
+        }
+
+        if (res.ok) {
+          clearForm();
+          await load();
+        } else {
+          const err = await res.json().catch(()=>({error:'erro'}));
+          alert('Erro: ' + (err.error || JSON.stringify(err)));
+        }
+      } catch (err) {
+        console.error(err);
+        alert('Erro na requisição');
+      }
+    });
+
+    // Cancel edit if user presses Escape
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') clearForm();
+    });
+
+    load();
+  </script>
+</body>
+</html>
